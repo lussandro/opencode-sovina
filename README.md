@@ -39,6 +39,102 @@
   <a href="README.vi.md">Tiếng Việt</a>
 </p>
 
+---
+
+## opencode-sovina
+
+A fork of OpenCode that spends fewer tokens and tells you what it spent. Same agent and models; less ceremony in the prompt, in tool output and in history. Every change below says how it was verified, and what was not.
+
+### What changed
+
+| Change | What it does | Effect | Evidence |
+| --- | --- | --- | --- |
+| **Compact skill catalog** | One line per skill (`- id: description`), descriptions cut at 300 characters on a sentence or word boundary. Skills still load in full when used. | 4490 → 1995 tokens for 32 skills (-56%) | Measured on a real install |
+| **Code Mode on demand** | `execute` and its catalog are only offered when an MCP server or other external tool exists. | About -1,200 tokens per request with no MCP | Measured (6 of the 8 built-in tools; a floor) |
+| **Leaner tool output** | `glob` returns paths relative to the project; `grep` shows a 400-character window centered on the match and drops the blank line after each hit. | `glob` -40% (100 paths); `grep` -8% typical, -80% on minified lines | Measured on this repo with real `rg` output |
+| **Prune cold tool output** | Replaces old `read`/`grep`/`glob`/`shell`/`webfetch` output with a stub, but only after the prompt cache has gone cold. | -7% to -45% cost, depending on how often you pause | **Simulated**, not measured in real sessions |
+| **Repeated-call dedupe** | A call whose input and output match an earlier one still in view becomes a pointer to it. | Depends on your workflow | **Not measured** |
+| **Caveman replies** (default on) | Terse chat replies. Code, commands, paths and errors stay verbatim; warnings and destructive actions stay in full sentences. | Costs about 240 input tokens (cached) | Output saving **not measured** |
+| **Dev skills** | Six lean skills in `skills/`: `dev-debugging`, `dev-testing`, `dev-backend`, `dev-frontend`, `dev-infra`, `dev-review`. | About 410 tokens each when loaded, against 2,000 to 9,000 for typical skills | Measured; size is enforced by a test |
+| **Honest cost reporting** | `generate` and warming usage now count toward session cost; every request records where its input tokens come from. | See [Measuring](#measuring) | Tested |
+
+### What is and is not proven
+
+- **Measured:** the skill catalog, Code Mode and tool-output numbers above. They are real sizes, not estimates, but they are *sizes*: the saving per request is that many tokens times your cache price, roughly 1% to 2% of a typical request each.
+- **Simulated:** pruning. Cutting history in the middle of a conversation invalidates the provider cache, which in the simulation cost up to 94% more in long sessions with Anthropic-style pricing (and saved a few percent only in short ones). So this fork prunes only when the cache is already cold, where it is free. The -7% to -45% assumes you pause between prompts often enough; your real number depends on that. Set `prune.idle` to match your provider's cache lifetime.
+- **Not verified:** whether Caveman actually shortens output for your models, and how often dedupe fires. Measure both before trusting them (see below).
+- **Not done:** an opt-in one-hour cache lifetime, and a leaner `general` subagent.
+
+### Configuration
+
+All three are optional; these are the defaults.
+
+```jsonc
+{
+  "caveman": "full",   // "lite" trims filler only; false restores the stock style
+  "prune": true,       // or { "idle": "5 minutes", "keep": 6, "min": 10000 }
+  "codemode": "auto"   // "on" always offers execute, "off" never does
+}
+```
+
+- `prune.idle` is how long without a response before the cache is assumed cold. Use `"0 seconds"` for providers with no prompt cache, where pruning eagerly is cheaper.
+- `prune.keep` is how many recent results are never pruned. `prune.min` is the least a prune must remove to be worth doing.
+- `prune: false` also turns off repeated-call dedupe.
+- `codemode: "auto"` hides OpenCode's own rarely used tools (worktrees, session rename, model list). Use `"on"` if you rely on them.
+
+### Measuring
+
+```bash
+opencode stats --cost
+```
+
+shows cost per prompt and per step, and where the average request's input tokens come from (example output):
+
+```
+COST & TOKENS
+  cost                $12.34
+  cached input        32.3%
+  cost / prompt       $3.08
+  cost / step         $2.06
+  tokens / step       3.1k
+
+REQUEST CONTEXT (avg est. tokens over 6 requests)
+  tool results             6k   60.0%  ████████████
+  tool definitions       2.5k   25.0%  █████
+  system prompt            1k   10.0%  ██
+```
+
+The breakdown is an estimate (about 4 characters per token), recorded on each step. To judge Caveman or pruning, run the same task twice, once with the feature off, and compare `output`, `cost / prompt` and `tool results`.
+
+### Skills
+
+```bash
+script/install-skills.sh   # links skills/dev-* into ~/.config/opencode/skills
+```
+
+It never overwrites an existing skill of the same name. The six skills add about 260 tokens to the catalog, so they pay off together with `skills/coding-profile.json`: merge its `policies` into your config to hide 13 skills that are not about code. On the install it was measured on, that took the catalog from 4490 tokens (old format) to 1423 with the six dev skills included.
+
+### Developing
+
+```bash
+bun install
+cd packages/core && bun run test       # also: packages/{schema,client,cli}
+```
+
+- Tests need [ripgrep](https://github.com/BurntSushi/ripgrep) on `PATH`; without it the `Ripgrep` and `search tools` suites fail.
+- Use a recent Node for `bun run lint` and `bun run typecheck`, the checks the pre-push hook runs. Both passed with Node 24.0.1. With Node 20.19 the root typecheck crashed turbo with a segfault and oxlint could not load its TypeScript plugin.
+- `core` runs about 6,500 tests in a few minutes. The GitLab OAuth tests can fail in the full run and pass on their own; they bind a local callback port, so run them in isolation if they fail.
+
+### Staying in sync with upstream
+
+```bash
+git fetch upstream && git rebase upstream/dev
+```
+
+Most changes are new files. These existing files are the likely conflicts: `core/src/session/{context,generate,compaction,stats}.ts`, `core/src/skill/instructions.ts`, `core/src/tool/plugin/{glob,grep}.ts`, `core/src/plugin/internal.ts`, and `schema/src/{config,session-event,token-usage,session-stats}.ts`. Regenerate the client with `bun run generate` in `packages/client` after resolving schema conflicts.
+
+---
+
 [![OpenCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://opencode.ai)
 
 ---
