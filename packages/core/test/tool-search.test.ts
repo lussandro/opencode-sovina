@@ -97,7 +97,8 @@ describe("search tools", () => {
               expect(result.metadata).toEqual({ count: expected.length, truncated: false })
               expect(result.content).toHaveLength(1)
               expect(result.content?.[0]?.type === "text" ? result.content[0].text.split("\n").sort() : []).toEqual(
-                expected.map((file) => path.join(tmp.path, file)).sort(),
+                // Relative to the Location: shorter, and accepted as is by every path-taking tool.
+                expected.map((file) => path.normalize(file)).sort(),
               )
             }),
           )
@@ -385,7 +386,7 @@ describe("search tools", () => {
               expect(assertions.map((input) => input.action)).toEqual(["glob"])
               expect(result).toMatchObject({
                 output: [{ path: path.join("linked", "outside.txt"), type: "file" }],
-                content: [{ type: "text", text: path.join(active.path, "linked", "outside.txt") }],
+                content: [{ type: "text", text: path.join("linked", "outside.txt") }],
               })
             }),
           ),

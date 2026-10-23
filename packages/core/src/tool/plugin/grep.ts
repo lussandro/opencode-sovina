@@ -40,6 +40,28 @@ export const Input = Schema.Struct({
 export const Output = Schema.Array(FileSystem.Match)
 type EncodedOutput = typeof Output.Encoded
 
+/** Characters of a matching line shown to the model; the structured output keeps more. */
+const PREVIEW_CHARS = 400
+
+/**
+ * Shows the part of a long line around the first match. Cutting from the start instead would hide the match itself
+ * on minified or generated files, which is exactly where lines run long.
+ */
+export const preview = (
+  text: string,
+  submatches: ReadonlyArray<{ readonly start: number }>,
+  width = PREVIEW_CHARS,
+) => {
+  const line = text.replace(/\r?\n$/, "")
+  if (line.length <= width) return line
+  const first = submatches[0]
+  // Ripgrep reports UTF-8 byte offsets, while the window is cut in characters.
+  const at = first ? Buffer.from(line).subarray(0, first.start).toString().length : 0
+  const start = Math.max(0, Math.min(at - Math.floor(width / 4), line.length - width))
+  const end = Math.min(line.length, start + width)
+  return `${start > 0 ? "…" : ""}${line.slice(start, end)}${end < line.length ? "…" : ""}`
+}
+
 /** Format raw search matches into concise model content. */
 export const toModelContent = (matches: EncodedOutput, truncated = false) => {
   const lines = matches.length === 0 ? ["No matches found"] : [`Found ${matches.length} matches`]
@@ -50,7 +72,7 @@ export const toModelContent = (matches: EncodedOutput, truncated = false) => {
       current = match.entry.path
       lines.push(`${match.entry.path}:`)
     }
-    lines.push(`  Line ${match.line}: ${match.text}`)
+    lines.push(`  Line ${match.line}: ${preview(match.text, match.submatches)}`)
   }
   if (truncated)
     lines.push(
@@ -146,13 +168,8 @@ export const Plugin = {
             }).pipe(
               Effect.map((result) => ({
                 output: result.matches,
-                content: toModelContent(
-                  result.matches.map((match) => ({
-                    ...match,
-                    entry: { ...match.entry, path: path.resolve(location.directory, match.entry.path) },
-                  })),
-                  result.truncated,
-                ),
+                // Paths stay relative to the Location, the base every path-taking tool resolves against.
+                content: toModelContent(result.matches, result.truncated),
                 metadata: { matches: result.matches.length, truncated: result.truncated },
               })),
               Effect.mapError((error) =>

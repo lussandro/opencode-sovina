@@ -120,10 +120,8 @@ export const Plugin = {
             }).pipe(
               Effect.map((result) => ({
                 output: result.entries,
-                content: toModelContent(
-                  result.entries.map((entry) => ({ ...entry, path: path.resolve(location.directory, entry.path) })),
-                  result.truncated,
-                ),
+                // Paths stay relative to the Location, the base every path-taking tool resolves against.
+                content: toModelContent(result.entries, result.truncated),
                 metadata: { count: result.entries.length, truncated: result.truncated },
               })),
               Effect.mapError((error) =>
