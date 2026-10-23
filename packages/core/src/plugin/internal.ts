@@ -104,6 +104,7 @@ import { ToolInputRepairPlugin } from "./tool-input-repair.js"
 import { OptimizePlugin } from "./optimize.js"
 import { VcsGitPlugin } from "./vcs/git.js"
 import { VerbosityPlugin } from "./verbosity.js"
+import { CavemanPlugin } from "./caveman.js"
 import { WarmingPlugin } from "./warming.js"
 import { WellKnownPlugin } from "../wellknown/plugin.js"
 
@@ -235,6 +236,8 @@ const pre = [
   PatchTool.Plugin,
   // Render model prompts after the patch plugin selects the available editing tools.
   ...OptimizePlugin.Plugins,
+  // After the model prompts: they override system[0], so the style block has to be appended last.
+  CavemanPlugin.Plugin,
   VerbosityPlugin.Plugin,
   IdentityPlugin.Plugin,
   EditTool.Plugin,
@@ -253,6 +256,9 @@ const pre = [
   WriteTool.Plugin,
   WarmingPlugin.Plugin,
 ] as const satisfies readonly InternalPlugin[]
+
+/** Plugin IDs in registration order; prompt plugins rewrite the same system part, so their order is behavior. */
+export const preIds: readonly string[] = pre.map((plugin) => plugin.id)
 
 const post = [
   ConfigInstructionPlugin.Plugin,
