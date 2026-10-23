@@ -21,6 +21,7 @@ import { SessionHistory } from "./history.js"
 import { InstructionEntry } from "./instruction-entry.js"
 import { SessionMessage } from "./message.js"
 import { SessionModelRequest } from "./model-request.js"
+import { SessionPrune } from "./prune.js"
 import { SessionRunnerModel } from "./runner/model.js"
 import { SessionSchema } from "./schema.js"
 import { SessionStore } from "./store.js"
@@ -87,6 +88,7 @@ const layer = Layer.effect(
     const referenceInstructions = yield* ReferenceInstructions.Service
     const skillInstructions = yield* SkillInstructions.Service
     const store = yield* SessionStore.Service
+    const prune = yield* SessionPrune.Service
     const registry = yield* Tool.Service
 
     const resolveModel = (session: SessionSchema.Info) => models.resolve(session, model.available)
@@ -178,7 +180,7 @@ const layer = Layer.effect(
         agent: selection.agent,
         model,
         initial: history.initial,
-        messages: history.entries.map((entry) => entry.message),
+        messages: yield* prune.apply(history.entries.map((entry) => entry.message)),
         tools: selection.tools,
       }
     })
@@ -218,6 +220,7 @@ export const node = makeLocationNode({
     ReferenceInstructions.node,
     SessionRunnerModel.node,
     SessionModelRequest.node,
+    SessionPrune.node,
     SessionStore.node,
     SkillInstructions.node,
     Tool.node,

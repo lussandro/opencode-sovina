@@ -13,6 +13,7 @@ import { SessionEvent } from "./event.js"
 import type { AgentNotFoundError } from "./error.js"
 import { SessionHistory } from "./history.js"
 import { SessionModelRequest } from "./model-request.js"
+import { SessionPrune } from "./prune.js"
 import { ModelRetry } from "../model-retry.js"
 import type { SessionRunnerModel } from "./runner/model.js"
 import type { SessionSchema } from "./schema.js"
@@ -38,6 +39,7 @@ export const generate = Effect.fn("SessionGenerate.generate")(function* (input: 
   return yield* Effect.gen(function* () {
     yield* Plugin.awaitActivation
     const context = yield* SessionContext.Service
+    const prune = yield* SessionPrune.Service
     const selection = yield* context.select(input.session.id)
     const model = yield* context.resolveModel(selection.session)
     const history = yield* SessionHistory.preview(database.db, selection.session.id, selection.instructions, model.ref)
@@ -46,7 +48,7 @@ export const generate = Effect.fn("SessionGenerate.generate")(function* (input: 
       model,
       tools: selection.tools,
       initial: history.initial,
-      messages: history.messages,
+      messages: yield* prune.apply(history.messages),
     })
     const prepared = yield* context.request.generate({
       session: selection.session,
