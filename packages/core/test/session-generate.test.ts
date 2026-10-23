@@ -20,6 +20,7 @@ import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { llmClient } from "@opencode/core/effect/app-node-platform"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Bus } from "@opencode/core/bus"
+import { CodeModeCatalog } from "@opencode/core/codemode/catalog"
 import { Config } from "@opencode/core/config"
 import { Document } from "@opencode/schema/config"
 import { Money } from "@opencode/schema/money"
@@ -122,20 +123,30 @@ const discovery = Layer.mock(InstructionDiscovery.Service, {
 const skills = Layer.mock(SkillInstructions.Service, { load: () => Effect.succeed(Instructions.empty) })
 const references = Layer.mock(ReferenceInstructions.Service, { load: () => Effect.succeed(Instructions.empty) })
 const mcp = Layer.mock(McpInstructions.Service, { load: () => Effect.succeed(Instructions.empty) })
+const capturedCatalog: CodeModeCatalog.Inventory = {
+  tools: [
+    {
+      type: "tool",
+      name: "captured.lookup",
+      description: "Captured Code Mode catalog",
+      signature: "tools.captured.lookup(): Promise<string>",
+    },
+  ],
+}
+// What the registry reports as Code Mode inventory; a test may narrow it to OpenCode's own namespace.
+let registryCatalog: CodeModeCatalog.Inventory = capturedCatalog
+// The real registry always builds `execute`; most tests here do not care about it.
+let registryExecute = false
 const tools = Layer.mock(Tool.Service, {
   snapshot: () =>
     Effect.succeed({
-      codeModeCatalog: {
-        tools: [
-          {
-            type: "tool",
-            name: "captured.lookup",
-            description: "Captured Code Mode catalog",
-            signature: "tools.captured.lookup(): Promise<string>",
-          },
-        ],
-      },
-      definitions: [ToolDefinition.make({ name: "lookup", description: "Lookup", inputSchema: { type: "object" } })],
+      codeModeCatalog: registryCatalog,
+      definitions: [
+        ToolDefinition.make({ name: "lookup", description: "Lookup", inputSchema: { type: "object" } }),
+        ...(registryExecute
+          ? [ToolDefinition.make({ name: "execute", description: "Run code", inputSchema: { type: "object" } })]
+          : []),
+      ],
       execute: () => Effect.die(new Error("unused")),
     }),
   transform: () => Effect.die(new Error("unused")),
@@ -618,5 +629,55 @@ it.effect("loads the primary request history already pruned", () =>
     expect(outputs).toHaveLength(10)
     expect(outputs.slice(0, 4).every((text) => text.startsWith("[Output removed"))).toBe(true)
     expect(outputs.slice(4).some((text) => text.startsWith("[Output removed"))).toBe(false)
+  }),
+)
+
+const selectTools = (codemode: "auto" | "on" | "off" | undefined, catalog: CodeModeCatalog.Inventory) =>
+  Effect.gen(function* () {
+    registryCatalog = catalog
+    registryExecute = true
+    yield* setup
+    const config = yield* Config.Test
+    yield* config.setEntries(codemode === undefined ? [] : [new Document({ type: "document", info: { codemode } })])
+    const context = yield* SessionContext.Service
+    return (yield* context.select(sessionID)).tools
+  }).pipe(
+    Effect.ensuring(
+      Effect.sync(() => {
+        registryCatalog = capturedCatalog
+        registryExecute = false
+      }),
+    ),
+  )
+
+const ownNamespace: CodeModeCatalog.Inventory = {
+  tools: [{ type: "namespace", name: "opencode", tools: [{ type: "tool", name: "worktree_list", description: "d", signature: "s" }] }],
+}
+
+it.effect("does not advertise execute when only OpenCode's own Code Mode tools exist", () =>
+  Effect.gen(function* () {
+    const snapshot = yield* selectTools(undefined, ownNamespace)
+    expect(snapshot.definitions.map((item) => item.name)).toEqual(["lookup"])
+    expect(snapshot.codeModeCatalog).toBeUndefined()
+  }),
+)
+
+it.effect("advertises execute once an external tool is present", () =>
+  Effect.gen(function* () {
+    const snapshot = yield* selectTools(undefined, capturedCatalog)
+    expect(snapshot.definitions.map((item) => item.name)).toEqual(["lookup", "execute"])
+    expect(snapshot.codeModeCatalog).toBeDefined()
+  }),
+)
+
+it.effect("keeps execute with codemode on even when only OpenCode's own tools exist", () =>
+  Effect.gen(function* () {
+    expect((yield* selectTools("on", ownNamespace)).definitions.map((item) => item.name)).toEqual(["lookup", "execute"])
+  }),
+)
+
+it.effect("drops execute with codemode off even when external tools exist", () =>
+  Effect.gen(function* () {
+    expect((yield* selectTools("off", capturedCatalog)).definitions.map((item) => item.name)).toEqual(["lookup"])
   }),
 )

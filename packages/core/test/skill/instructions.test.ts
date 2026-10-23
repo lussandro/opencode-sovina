@@ -1,5 +1,5 @@
 import path from "path"
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { Agent } from "@opencode/core/agent"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
@@ -57,15 +57,10 @@ describe("SkillInstructions", () => {
 
       expect(initialized.text).toBe(
         [
-          "Skills provide specialized instructions and workflows for specific tasks.",
-          "Use the skill tool to load a skill when a task matches its description.",
-          "The user may also invoke a skill directly. When that happens, its instructions appear in the conversation as a <skill_content> block, the same shape the skill tool returns. A skill that is already present this way does not need to be invoked again.",
+          "Skills are specialized instructions for specific tasks. Load one with the skill tool when the task matches its description.",
+          "The user may also invoke a skill directly; its instructions then appear in the conversation as a <skill_content> block, the same shape the skill tool returns. A skill already present this way does not need to be loaded again.",
           "<available_skills>",
-          "  <skill>",
-          "    <id>effect</id>",
-          "    <name>Effect</name>",
-          "    <description>Build applications with Effect</description>",
-          "  </skill>",
+          "- effect (Effect): Build applications with Effect",
           "</available_skills>",
         ].join("\n"),
       )
@@ -101,11 +96,7 @@ describe("SkillInstructions", () => {
       expect(added.text).toBe(
         [
           "New skills are available in addition to those previously listed:",
-          "  <skill>",
-          "    <id>debugging</id>",
-          "    <name>Debugging</name>",
-          "    <description>Diagnose hard bugs</description>",
-          "  </skill>",
+          "- debugging (Debugging): Diagnose hard bugs",
         ].join("\n"),
       )
 
@@ -131,11 +122,7 @@ describe("SkillInstructions", () => {
       expect(changed.text).toBe(
         [
           "The following skills have changed. Each entry replaces the previously listed skill with the same ID:",
-          "  <skill>",
-          "    <id>effect</id>",
-          "    <name>Effect</name>",
-          "    <description>Build applications with Effect v4</description>",
-          "  </skill>",
+          "- effect (Effect): Build applications with Effect v4",
         ].join("\n"),
       )
     }).pipe(Effect.provide(layer(() => skills)))
@@ -178,7 +165,7 @@ describe("SkillInstructions", () => {
       const instructions = yield* SkillInstructions.Service
       expect(
         (yield* instructions.load(agent.permissions).pipe(Effect.flatMap(readInitial))).text,
-      ).toContain("<name>Effect</name>")
+      ).toContain("- effect (Effect):")
     }).pipe(Effect.provide(layer(() => [effect])))
   })
 
@@ -195,5 +182,43 @@ describe("SkillInstructions", () => {
       const instructions = yield* SkillInstructions.Service
       expect((yield* instructions.load(agent.permissions).pipe(Effect.flatMap(readInitial))).text).toBe("")
     }).pipe(Effect.provide(layer(() => [effect])))
+  })
+})
+
+describe("SkillInstructions.abbreviate", () => {
+  const { abbreviate } = SkillInstructions
+
+  test("leaves a description within the limit as it is, collapsing stray whitespace", () => {
+    expect(abbreviate("Build   apps\n with Effect")).toBe("Build apps with Effect")
+  })
+
+  test("cuts at a sentence end when one falls near the limit", () => {
+    const text = `${"Use this skill to build Effect programs".padEnd(80, " x")}. Then some trailing exclusions that run long ${"y ".repeat(200)}`
+    const shown = abbreviate(text, 100)
+    expect(shown.endsWith(".")).toBe(true)
+    expect(shown).not.toContain("trailing")
+    expect(shown.length).toBeLessThanOrEqual(100)
+  })
+
+  test("otherwise cuts at a word and marks the cut", () => {
+    const shown = abbreviate("alpha beta gamma delta epsilon zeta eta theta iota kappa", 30)
+    expect(shown).toBe("alpha beta gamma delta…")
+    expect(shown.endsWith(" …")).toBe(false)
+  })
+
+  test("never cuts a word in half when there is a word boundary to use", () => {
+    const shown = abbreviate("supercalifragilistic expialidocious word", 25)
+    expect(shown.replace("…", "").trim().split(" ").every((word) => "supercalifragilistic expialidocious word".includes(word))).toBe(true)
+  })
+
+  test("falls back to a hard cut for one unbroken run", () => {
+    const shown = abbreviate("x".repeat(500), 50)
+    expect(shown).toBe(`${"x".repeat(50)}…`)
+  })
+
+  test("keeps the catalog entry in full in the stored data and shortens only what is rendered", () => {
+    const long = `Use this skill for Effect. ${"Exclusions apply here. ".repeat(40)}`
+    expect(abbreviate(long).length).toBeLessThanOrEqual(SkillInstructions.DESCRIPTION_LIMIT)
+    expect(long.length).toBeGreaterThan(SkillInstructions.DESCRIPTION_LIMIT)
   })
 })

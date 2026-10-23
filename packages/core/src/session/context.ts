@@ -4,7 +4,9 @@ import { Model } from "../model.js"
 import { Permission } from "../permission.js"
 import { Context, Effect, Layer } from "effect"
 import { Agent } from "../agent.js"
+import { CodeModeAuto } from "../codemode/auto.js"
 import { CodeModeInstructions } from "../codemode/instructions.js"
+import { Config } from "../config.js"
 import { Database } from "../database/database.js"
 import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { InstructionDiscovery } from "../instruction-discovery.js"
@@ -76,6 +78,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const agents = yield* Agent.Service
     const builtins = yield* InstructionBuiltIns.Service
+    const config = yield* Config.Service
     const model = yield* Model.Service
     const db = (yield* Database.Service).db
     const discovery = yield* InstructionDiscovery.Service
@@ -136,9 +139,10 @@ const layer = Layer.effect(
       if (!agent.info) return yield* new AgentNotFoundError({ sessionID: session.id, agent: session.agent ?? agent.id })
       // Session permissions narrow discovery the same way they narrow the tool snapshot.
       const permissions = Permission.merge(agent.info.permissions, session.permissions ?? [])
+      const codemode = Config.latest(yield* config.entries(), "codemode") ?? "auto"
       const loaded = yield* Effect.all(
         {
-          tools: registry.snapshot(permissions),
+          tools: registry.snapshot(permissions).pipe(Effect.map((snapshot) => CodeModeAuto.apply(snapshot, codemode))),
           builtins: builtins.load(),
           discovery: discovery.load(),
           skills: skillInstructions.load(permissions),
@@ -209,6 +213,7 @@ export const node = makeLocationNode({
   layer,
   deps: [
     Agent.node,
+    Config.node,
     Model.node,
     Database.node,
     InstructionBuiltIns.node,

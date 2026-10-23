@@ -32,6 +32,30 @@ const info = (id: string, description: string) =>
   })
 
 describe("Skill", () => {
+  it.effect("a config policy hides a skill from the list and from the catalog the model sees", () =>
+    Effect.gen(function* () {
+      const skills = yield* Skill.Service
+      const config = yield* Config.Test
+      yield* skills.transform((editor) => {
+        editor.add(info("dev-testing", "Use when writing tests"))
+        editor.add(info("pptx", "Use for slide decks"))
+      })
+      yield* config.setEntries([
+        new Document({
+          type: "document",
+          info: { policies: [{ action: "integration.use", resource: "skill:pptx", effect: "deny" }] },
+        }),
+      ])
+      yield* registerIntegrationPolicy({ skill: skills })
+
+      expect((yield* skills.list()).map((skill) => String(skill.id))).toEqual(["dev-testing"])
+      expect(yield* skills.get(Skill.ID.make("pptx"))).toBeUndefined()
+      const guidance = yield* (yield* SkillInstructions.Service).load([]).pipe(Effect.flatMap(readInitial))
+      expect(guidance.text).toContain("- dev-testing: Use when writing tests")
+      expect(guidance.text).not.toContain("pptx")
+    }),
+  )
+
   it.live("hides and refuses denied skills while organization policy overrides local allows", () =>
     Effect.gen(function* () {
       const skills = yield* Skill.Service
@@ -61,7 +85,7 @@ describe("Skill", () => {
       expect(yield* skills.get(Skill.ID.make("team:review"))).toEqual(info("team:review", "Review"))
       const instructions = yield* SkillInstructions.Service
       const guidance = yield* instructions.load([]).pipe(Effect.flatMap(readInitial))
-      expect(guidance.text).toContain("<id>team:review</id>")
+      expect(guidance.text).toContain("- team:review: Review")
       expect(guidance.text).not.toContain("deploy")
 
       yield* managed.set({ statements: [{ action: "integration.use", resource: "skill:team:review", effect: "deny" }] })

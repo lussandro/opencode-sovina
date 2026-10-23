@@ -13,20 +13,34 @@ const Summary = Schema.Struct({
 })
 type Summary = typeof Summary.Type
 
+/** Longest description the catalog shows. The skill's own text is untouched and loads in full on use. */
+export const DESCRIPTION_LIMIT = 300
+
+/**
+ * Shortens a description to the limit at a sentence end when one falls near it, else at a word. What decides whether a
+ * skill applies is stated up front, while exclusions tend to trail, so the head is what is kept.
+ */
+export const abbreviate = (description: string, limit = DESCRIPTION_LIMIT) => {
+  const text = description.replace(/\s+/g, " ").trim()
+  if (text.length <= limit) return text
+  const head = text.slice(0, limit)
+  const sentence = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "))
+  if (sentence >= limit * 0.6) return head.slice(0, sentence + 1)
+  const word = head.lastIndexOf(" ")
+  return `${(word >= limit * 0.6 ? head.slice(0, word) : head).replace(/[\s,;:(–-]+$/, "")}…`
+}
+
+// One line per skill. The ID is what the skill tool takes; the name only appears when it differs.
 const entries = (skills: ReadonlyArray<Summary>) =>
-  skills.flatMap((skill) => [
-    "  <skill>",
-    `    <id>${skill.id}</id>`,
-    `    <name>${skill.name}</name>`,
-    `    <description>${skill.description}</description>`,
-    "  </skill>",
-  ])
+  skills.map(
+    (skill) =>
+      `- ${skill.id}${String(skill.name) === String(skill.id) ? "" : ` (${skill.name})`}: ${abbreviate(skill.description)}`,
+  )
 
 const render = (skills: ReadonlyArray<Summary>) =>
   [
-    "Skills provide specialized instructions and workflows for specific tasks.",
-    "Use the skill tool to load a skill when a task matches its description.",
-    "The user may also invoke a skill directly. When that happens, its instructions appear in the conversation as a <skill_content> block, the same shape the skill tool returns. A skill that is already present this way does not need to be invoked again.",
+    "Skills are specialized instructions for specific tasks. Load one with the skill tool when the task matches its description.",
+    "The user may also invoke a skill directly; its instructions then appear in the conversation as a <skill_content> block, the same shape the skill tool returns. A skill already present this way does not need to be loaded again.",
     ...(skills.length === 0
       ? ["No skills are currently available."]
       : ["<available_skills>", ...entries(skills), "</available_skills>"]),
