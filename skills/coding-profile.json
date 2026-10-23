@@ -1,0 +1,69 @@
+{
+  "policies": [
+    {
+      "action": "integration.use",
+      "resource": "skill:docx",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:pptx",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:xlsx",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:pdf",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:docs",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:google-workspace",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:computer-use",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:chrome-browser",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:built-in-browser",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:morning",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:import-memory",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:skill-creator",
+      "effect": "deny"
+    },
+    {
+      "action": "integration.use",
+      "resource": "skill:copy-meta-andromeda",
+      "effect": "deny"
+    }
+  ]
+}
