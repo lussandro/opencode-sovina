@@ -48,6 +48,13 @@ export const Tools = Schema.Union([
 ]).annotate({ identifier: "SessionStats.Tools" })
 export type Tools = typeof Tools.Type
 
+/** Average estimated input tokens per request, by component. Only counts requests recorded with a breakdown. */
+export const RequestBreakdown = Schema.Struct({
+  requests: NonNegativeInt,
+  average: TokenUsage.Breakdown,
+}).annotate({ identifier: "SessionStats.RequestBreakdown" })
+export type RequestBreakdown = typeof RequestBreakdown.Type
+
 export const Info = Schema.Struct({
   range: Schema.Struct({
     from: DateTimeUtcFromMillis,
@@ -64,5 +71,6 @@ export const Info = Schema.Struct({
   streak: NonNegativeInt,
   activity: Schema.Array(Activity),
   models: Schema.Array(ModelUsage),
+  breakdown: RequestBreakdown.pipe(optional),
 }).annotate({ identifier: "SessionStats.Info" })
 export type Info = typeof Info.Type

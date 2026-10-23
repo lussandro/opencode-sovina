@@ -198,6 +198,22 @@ export type SessionStatsOutput = {
     }
     readonly cost: Money.USD
   }>
+  readonly breakdown?:
+    | {
+        readonly requests: number
+        readonly average: {
+          readonly system: number
+          readonly tools: number
+          readonly user: number
+          readonly assistant: number
+          readonly reasoning: number
+          readonly toolCalls: number
+          readonly toolResults: number
+          readonly media: number
+          readonly summary: number
+        }
+      }
+    | undefined
 }
 export type SessionStatsOperation<E = never> = (input?: SessionStatsInput) => Effect.Effect<SessionStatsOutput, E>
 
@@ -797,6 +813,19 @@ export type SessionLogOutput =
             readonly model: Model.Ref
             readonly snapshot?: Snapshot.ID | undefined
             readonly started: number
+            readonly request?:
+              | {
+                  readonly system: number
+                  readonly tools: number
+                  readonly user: number
+                  readonly assistant: number
+                  readonly reasoning: number
+                  readonly toolCalls: number
+                  readonly toolResults: number
+                  readonly media: number
+                  readonly summary: number
+                }
+              | undefined
           }
         }
       | {
@@ -1210,7 +1239,7 @@ export type SessionLogOutput =
             | undefined
           readonly data: {
             readonly sessionID: Session.ID
-            readonly source: "title" | "compaction"
+            readonly source: "title" | "compaction" | "generate"
             readonly cost: Money.USD
             readonly tokens: {
               readonly input: number

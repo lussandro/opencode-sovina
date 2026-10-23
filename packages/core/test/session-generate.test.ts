@@ -78,7 +78,7 @@ const client = Layer.mock(LLMClient.Service)({
         LLMEvent.stepFinish({
           index: 0,
           reason: { normalized: "stop" },
-          usage: { inputTokens: 100, outputTokens: 10 },
+          usage: { inputTokens: 100, nonCachedInputTokens: 100, outputTokens: 10, visibleOutputTokens: 10 },
         }),
         LLMEvent.finish({ reason: { normalized: "stop" } }),
       ])
@@ -167,16 +167,38 @@ const it = testEffect(
   ),
 )
 
+const usageType = Bus.versionedType(SessionEvent.UsageRecorded.type, 1)
+
+// Usage accounting is the one durable write generate is allowed to make; history must stay untouched.
+const usageEvents = (db: Database.Interface["db"], sessionID: SessionSchema.ID) =>
+  db
+    .select()
+    .from(EventTable)
+    .where(eq(EventTable.aggregate_id, sessionID))
+    .orderBy(asc(EventTable.seq))
+    .all()
+    .pipe(
+      Effect.orDie,
+      Effect.map((rows) => rows.filter((row) => row.type === usageType)),
+    )
+
 const durableState = (db: Database.Interface["db"], sessionID: SessionSchema.ID) =>
   Effect.all({
-    sequence: Bus.latestSequence(db, sessionID),
+    sequence: Bus.latestSequence(db, sessionID).pipe(
+      Effect.flatMap((latest) =>
+        usageEvents(db, sessionID).pipe(Effect.map((usage) => latest - usage.length)),
+      ),
+    ),
     bus: db
       .select()
       .from(EventTable)
       .where(eq(EventTable.aggregate_id, sessionID))
       .orderBy(asc(EventTable.seq))
       .all()
-      .pipe(Effect.orDie),
+      .pipe(
+        Effect.orDie,
+        Effect.map((rows) => rows.filter((row) => row.type !== usageType)),
+      ),
     messages: db
       .select()
       .from(SessionMessageTable)
@@ -198,7 +220,28 @@ const durableState = (db: Database.Interface["db"], sessionID: SessionSchema.ID)
       .get()
       .pipe(Effect.orDie),
     blobs: db.select().from(InstructionBlobTable).orderBy(asc(InstructionBlobTable.hash)).all().pipe(Effect.orDie),
-    session: db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get().pipe(Effect.orDie),
+    // Usage counters are accounting, not history: they legitimately move when generate spends tokens.
+    session: db
+      .select()
+      .from(SessionTable)
+      .where(eq(SessionTable.id, sessionID))
+      .get()
+      .pipe(
+        Effect.orDie,
+        Effect.map((row) =>
+          row
+            ? {
+                ...row,
+                cost: 0,
+                tokens_input: 0,
+                tokens_output: 0,
+                tokens_reasoning: 0,
+                tokens_cache_read: 0,
+                tokens_cache_write: 0,
+              }
+            : row,
+        ),
+      ),
   })
 
 const userTexts = (request: LLMRequest) =>
@@ -357,6 +400,9 @@ it.effect(
       expect(requests[0]?.toolChoice).toBeUndefined()
       expect(options[0]?.webSocket).toBeUndefined()
       expect(yield* durableState(db, sessionID)).toEqual(before)
+      const usage = yield* usageEvents(db, sessionID)
+      expect(usage).toHaveLength(1)
+      expect(usage[0]?.data).toMatchObject({ source: "generate", tokens: { input: 100, output: 10 } })
     }),
   { timeout: 15_000 },
 )

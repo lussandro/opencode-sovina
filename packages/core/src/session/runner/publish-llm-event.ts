@@ -26,6 +26,8 @@ type Input = {
   /** The start snapshot, awaited before `Step.Started` so its capture can overlap the provider request. */
   readonly pendingSnapshot?: Effect.Effect<Snapshot.ID | undefined>
   readonly started: number
+  /** Estimated input tokens by component, recorded on `Step.Started`. */
+  readonly request?: TokenUsage.Breakdown
   readonly assistantMessageID: SessionMessage.ID
 }
 
@@ -132,6 +134,7 @@ export const createLLMEventPublisher = (bus: Pick<Bus.Interface, "publish">, inp
       assistantMessageID,
       snapshot,
       started: input.started,
+      request: input.request,
     })
     return assistantMessageID
   })

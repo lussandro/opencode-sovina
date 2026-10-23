@@ -5482,6 +5482,21 @@ describe("SessionRunnerLLM", () => {
     ).toHaveLength(1)
   })
 
+  scenario("records the estimated request breakdown on the step start", function* (s) {
+    yield* s.llm.push(TestLLM.text("Done", "text-breakdown"))
+    yield* s.runPrompt("x".repeat(400))
+
+    const assistant = requireAssistant(yield* s.context)
+    const started = (yield* recordedStepSettlementEvents(sessionID, assistant.id)).find(
+      (event) => event.type === "session.step.started.1",
+    )
+    const request = (started?.data as { request?: Record<string, number> } | undefined)?.request
+    expect(request).toBeDefined()
+    expect(request?.user).toBeGreaterThanOrEqual(100)
+    expect(request?.system).toBeGreaterThan(0)
+    expect(request?.toolResults).toBe(0)
+  })
+
   scenario("does not recover context overflow after durable assistant output", function* (s) {
     yield* s.llm.push([
       LLMEvent.stepStart({ index: 0 }),

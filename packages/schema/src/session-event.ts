@@ -162,7 +162,7 @@ export const UsageRecorded = Event.durable({
   ...options,
   schema: {
     ...Base,
-    source: Schema.Literals(["title", "compaction"]),
+    source: Schema.Literals(["title", "compaction", "generate"]),
     cost: Money.USD,
     tokens: TokenUsage.Info,
   },
@@ -342,6 +342,8 @@ export namespace Step {
       snapshot: Snapshot.ID.pipe(optional),
       /** Request dispatch time, before waiting for provider output. */
       started: NonNegativeInt,
+      /** Estimated input tokens by component, for cost analysis. Absent on events recorded before measurement existed. */
+      request: TokenUsage.Breakdown.pipe(optional),
     },
   })
   export type Started = typeof Started.Type

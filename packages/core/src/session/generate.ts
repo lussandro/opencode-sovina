@@ -3,17 +3,20 @@ export * as SessionGenerate from "./generate.js"
 import type { FileSystem } from "../filesystem.js"
 import { LLMClient, Message, type AIError } from "@opencode/ai"
 import { Effect } from "effect"
+import { Bus } from "../bus.js"
 import { Database } from "../database/database.js"
 import { Instance } from "../instance/service.js"
 import { Plugin } from "../plugin/service.js"
 import type { Instructions } from "../instructions/index.js"
 import { SessionContext } from "./context.js"
+import { SessionEvent } from "./event.js"
 import type { AgentNotFoundError } from "./error.js"
 import { SessionHistory } from "./history.js"
 import { SessionModelRequest } from "./model-request.js"
 import { ModelRetry } from "../model-retry.js"
 import type { SessionRunnerModel } from "./runner/model.js"
 import type { SessionSchema } from "./schema.js"
+import { SessionUsage } from "./usage.js"
 
 export type Error =
   | AgentNotFoundError
@@ -30,6 +33,7 @@ export const generate = Effect.fn("SessionGenerate.generate")(function* (input: 
   const instances = yield* Instance.Service
   const database = yield* Database.Service
   const llm = yield* LLMClient.Service
+  const bus = yield* Bus.Service
 
   return yield* Effect.gen(function* () {
     yield* Plugin.awaitActivation
@@ -62,7 +66,11 @@ export const generate = Effect.fn("SessionGenerate.generate")(function* (input: 
       modelID: model.ref.id,
     })
     const response = yield* llm.generate(prepared.request, prepared.options).pipe(ModelRetry.retry)
-    yield* Effect.logInfo("session generation usage diagnostic", { usage: response.usage })
+    yield* bus.publish(SessionEvent.UsageRecorded, {
+      sessionID: selection.session.id,
+      source: "generate",
+      ...SessionUsage.record(response.usage, model.cost),
+    })
     return response.text
   }).pipe(instances.provide(input.session))
 })

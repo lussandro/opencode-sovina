@@ -9,6 +9,8 @@ import { SessionEvent } from "@opencode/schema/session-event"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { AbsolutePath } from "@opencode/core/schema"
 import { Bus } from "@opencode/core/bus"
+import { Event } from "@opencode/schema/event"
+import { EventTable } from "@opencode/core/event/sql"
 import { Database } from "@opencode/core/database/database"
 import { ProjectTable } from "@opencode/core/project/sql"
 import { SessionMessageTable, SessionTable } from "@opencode/core/session/sql"
@@ -181,6 +183,44 @@ describe("SessionStats", () => {
         tokens: { input: 2, output: 2, reasoning: 2, cache: { read: 2, write: 2 } },
       })
 
+      yield* bus.publish(SessionEvent.UsageRecorded, {
+        sessionID,
+        source: "generate",
+        cost: Money.USD.make(0.125),
+        tokens: { input: 3, output: 3, reasoning: 0, cache: { read: 4, write: 0 } },
+      })
+      const started = (seq: number, request?: Record<string, number>) => ({
+        id: Event.ID.make(`evt_stats_started_${seq}`),
+        aggregate_id: sessionID,
+        seq,
+        created: Date.UTC(2026, 0, 2, 10, 0, 4),
+        type: Event.versionedType(SessionEvent.Step.Started.type, SessionEvent.Step.Started.durable.version),
+        data: {
+          sessionID,
+          assistantMessageID: `msg_stats_started_${seq}`,
+          agent: "build",
+          model: { providerID: "anthropic", id: "sonnet" },
+          started: Date.UTC(2026, 0, 2, 10, 0, 4),
+          ...(request ? { request } : {}),
+        },
+      })
+      const request = (system: number, toolResults: number) => ({
+        system,
+        tools: 100,
+        user: 10,
+        assistant: 20,
+        reasoning: 0,
+        toolCalls: 4,
+        toolResults,
+        media: 0,
+        summary: 0,
+      })
+      yield* db
+        .insert(EventTable)
+        .values([started(9001, request(200, 50)), started(9002, request(400, 150)), started(9003)])
+        .run()
+        .pipe(Effect.orDie)
+
       const stats = yield* SessionStats.get({
         from: Date.UTC(2026, 0, 1),
         to: Date.UTC(2026, 1, 1),
@@ -192,8 +232,14 @@ describe("SessionStats", () => {
       expect(stats.subagents).toBe(1)
       expect(stats.prompts).toBe(1)
       expect(stats.steps).toBe(3)
-      expect(stats.tokens).toEqual({ input: 42, output: 22, reasoning: 10, cache: { read: 18, write: 6 } })
-      expect(stats.cost).toBe(Money.USD.make(6.25))
+      // 3 + 3 + 4 are the generate event: compaction and generate count, title does not.
+      expect(stats.tokens).toEqual({ input: 45, output: 25, reasoning: 10, cache: { read: 22, write: 6 } })
+      expect(stats.cost).toBe(Money.USD.make(6.375))
+      // The request without a breakdown is ignored, so averages divide by 2, not 3.
+      expect(stats.breakdown).toEqual({
+        requests: 2,
+        average: { ...request(300, 100), user: 10, assistant: 20 },
+      })
       expect(stats.tools).toMatchObject({
         mode: "detail",
         totals: { calls: 3, succeeded: 1, failed: 1, unfinished: 1 },

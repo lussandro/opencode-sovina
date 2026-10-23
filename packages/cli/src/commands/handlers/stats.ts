@@ -205,7 +205,52 @@ function renderCost(stats: SessionStatsInfo) {
     row("cache read", formatNumber(stats.tokens.cache.read)),
     row("cache write", formatNumber(stats.tokens.cache.write)),
     row("cached input", formatPercent(cached)),
+    ...(stats.prompts > 0 ? [row("cost / prompt", formatCost(stats.cost / stats.prompts))] : []),
+    ...(stats.steps > 0
+      ? [
+          row("cost / step", formatCost(stats.cost / stats.steps)),
+          row("tokens / step", formatNumber(TokenUsage.total(stats.tokens) / stats.steps)),
+        ]
+      : []),
+    ...renderBreakdown(stats),
   ]
+}
+
+const BREAKDOWN_LABELS = [
+  ["system", "system prompt"],
+  ["tools", "tool definitions"],
+  ["user", "user messages"],
+  ["assistant", "assistant text"],
+  ["reasoning", "reasoning"],
+  ["toolCalls", "tool calls"],
+  ["toolResults", "tool results"],
+  ["media", "images & files"],
+  ["summary", "compaction summary"],
+] as const
+
+/** Where the average request's input tokens come from: the first place to look when cost is too high. */
+function renderBreakdown(stats: SessionStatsInfo) {
+  const breakdown = stats.breakdown
+  if (!breakdown) return []
+  const total = BREAKDOWN_LABELS.reduce((sum, [key]) => sum + breakdown.average[key], 0)
+  if (total === 0) return []
+  return [
+    "",
+    `REQUEST CONTEXT (avg est. tokens over ${breakdown.requests.toLocaleString("en-US")} request${breakdown.requests === 1 ? "" : "s"})`,
+    ...BREAKDOWN_LABELS.map(([key, label]) => ({ label, value: breakdown.average[key] }))
+      .filter((item) => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .map((item) => {
+        const share = (item.value / total) * 100
+        const bar = "█".repeat(Math.max(1, Math.round(share / 5)))
+        return `  ${item.label.padEnd(20)}${formatNumber(item.value).padStart(7)} ${formatPercent(share).padStart(7)}  ${bar}`
+      }),
+    row("total", formatNumber(total)),
+  ]
+}
+
+function formatCost(value: number) {
+  return value >= 0.01 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`
 }
 
 function renderModels(stats: SessionStatsInfo, limit: number, width: number) {

@@ -82,6 +82,18 @@ export type SessionStatsToolUsage = {
 
 export type SessionStatsActivity = { date: string; steps: number }
 
+export type TokenUsageBreakdown = {
+  system: number
+  tools: number
+  user: number
+  assistant: number
+  reasoning: number
+  toolCalls: number
+  toolResults: number
+  media: number
+  summary: number
+}
+
 export type PromptBase64 = string
 
 export type PromptFileSource = { type: "inline" } | { type: "uri"; uri: string }
@@ -417,6 +429,8 @@ export type SessionStatsTools =
   | { mode: "none" }
   | { mode: "summary"; totals: SessionStatsToolTotals }
   | { mode: "detail"; totals: SessionStatsToolTotals; usage: Array<SessionStatsToolUsage> }
+
+export type SessionStatsRequestBreakdown = { requests: number; average: TokenUsageBreakdown }
 
 export type PromptFileAttachment = {
   data: PromptBase64
@@ -1235,6 +1249,7 @@ export type SessionStepStarted = {
     model: ModelRef
     snapshot?: SnapshotID
     started: number
+    request?: TokenUsageBreakdown
   }
 }
 
@@ -1476,7 +1491,7 @@ export type SessionUsageRecorded = {
   type: "session.usage.recorded"
   durable: { aggregateID: string; seq: EventSeq; version: 1 }
   location?: LocationRef
-  data: { sessionID: SessionID; source: "title" | "compaction"; cost: MoneyUSD; tokens: TokenUsageInfo }
+  data: { sessionID: SessionID; source: "title" | "compaction" | "generate"; cost: MoneyUSD; tokens: TokenUsageInfo }
 }
 
 export type LocationShutdown = {
@@ -2085,6 +2100,7 @@ export type SessionStatsInfo = {
   streak: number
   activity: Array<SessionStatsActivity>
   models: Array<SessionStatsModelUsage>
+  breakdown?: SessionStatsRequestBreakdown
 }
 
 export type SessionMessageCompaction =

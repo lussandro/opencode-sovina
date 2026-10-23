@@ -24,6 +24,7 @@ import { SessionMessage } from "../message.js"
 import { SessionModelRequest } from "../model-request.js"
 import { SessionSchema } from "../schema.js"
 import { toSessionError } from "../to-session-error.js"
+import { SessionRequestBreakdown } from "../request-breakdown.js"
 import { SessionUsage } from "../usage.js"
 import { SessionRunnerModel } from "./model.js"
 import { createLLMEventPublisher } from "./publish-llm-event.js"
@@ -82,6 +83,7 @@ export const make = Effect.gen(function* () {
       providerMetadataKey: input.model.model.route.providerMetadataKey ?? input.model.model.provider,
       pendingSnapshot: Fiber.join(pendingStartSnapshot),
       started: yield* Clock.currentTimeMillis,
+      request: SessionRequestBreakdown.make(input.prepared.request),
     })
     const toolRuns: Array<{
       readonly call: ToolCall

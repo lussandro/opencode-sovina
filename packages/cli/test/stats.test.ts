@@ -62,6 +62,44 @@ describe("stats rendering", () => {
     expect(output.split(/\r?\n/).find((line) => line.startsWith("We "))).toContain("\u2588")
   })
 
+  test("reports cost per unit of work and where request tokens come from", () => {
+    const withBreakdown: SessionStatsInfo = {
+      ...stats,
+      breakdown: {
+        requests: 6,
+        average: {
+          system: 1_000,
+          tools: 2_500,
+          user: 100,
+          assistant: 200,
+          reasoning: 0,
+          toolCalls: 100,
+          toolResults: 6_000,
+          media: 0,
+          summary: 100,
+        },
+      },
+    }
+    const output = renderStats(withBreakdown, options({ cost: true }))
+    expect(output).toContain("cost / prompt       $3.08")
+    expect(output).toContain("cost / step         $2.06")
+    expect(output).toContain("tokens / step       3.1k")
+    expect(output).toContain("REQUEST CONTEXT (avg est. tokens over 6 requests)")
+    const lines = output.split(/\r?\n/)
+    const results = lines.findIndex((line) => line.includes("tool results"))
+    const definitions = lines.findIndex((line) => line.includes("tool definitions"))
+    expect(results).toBeGreaterThan(-1)
+    // Biggest consumer first, with its share of the 10k total.
+    expect(results).toBeLessThan(definitions)
+    expect(lines[results]).toContain("60.0%")
+    expect(lines.some((line) => line.includes("reasoning") && line.includes("%"))).toBe(false)
+    expect(output).toMatch(/total\s+10k/)
+  })
+
+  test("omits the request context section when no request recorded a breakdown", () => {
+    expect(renderStats(stats, options({ cost: true }))).not.toContain("REQUEST CONTEXT")
+  })
+
   test("renders only requested detail tables", () => {
     const output = renderStats(stats, options({ tools: true, cost: true }))
     expect(output).toContain("COST & TOKENS")

@@ -70,6 +70,7 @@ type ToolAggregate = {
 }
 
 const decodeUsage = Schema.decodeUnknownOption(SessionEvent.UsageRecorded.data)
+const decodeStarted = Schema.decodeUnknownOption(SessionEvent.Step.Started.data)
 const Window = 31 * 24 * 60 * 60 * 1_000
 
 export class InvalidRangeError extends Schema.TaggedError<InvalidRangeError>()("SessionStats.InvalidRangeError", {
@@ -293,7 +294,8 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
               EventTable.type,
               Event.versionedType(SessionEvent.UsageRecorded.type, SessionEvent.UsageRecorded.durable.version),
             ),
-            sql`json_extract(${EventTable.data}, '$.source') = 'compaction'`,
+            // Title usage is left out on purpose; compaction and generate are real spend the messages do not carry.
+            sql`json_extract(${EventTable.data}, '$.source') IN ('compaction', 'generate')`,
             gte(EventTable.created, from),
             lt(EventTable.created, to),
           ),
@@ -307,6 +309,37 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
     if (Option.isNone(decoded)) return
     addTokens(totals.tokens, decoded.value.tokens)
     totals.cost += decoded.value.cost
+  })
+
+  const breakdown = emptyBreakdown()
+  let breakdownRequests = 0
+  const started = (yield* Effect.forEach(
+    batches(ids.map((row) => row.id)),
+    (batch) =>
+      db
+        .select({ data: EventTable.data })
+        .from(EventTable)
+        .where(
+          and(
+            inArray(EventTable.aggregate_id, batch),
+            eq(
+              EventTable.type,
+              Event.versionedType(SessionEvent.Step.Started.type, SessionEvent.Step.Started.durable.version),
+            ),
+            sql`json_extract(${EventTable.data}, '$.request') IS NOT NULL`,
+            gte(EventTable.created, from),
+            lt(EventTable.created, to),
+          ),
+        )
+        .all()
+        .pipe(Effect.orDie),
+    { concurrency: 4 },
+  )).flat()
+  started.forEach((row) => {
+    const decoded = decodeStarted(row.data)
+    if (Option.isNone(decoded) || decoded.value.request === undefined) return
+    breakdownRequests += 1
+    for (const key of Object.keys(breakdown) as Array<keyof typeof breakdown>) breakdown[key] += decoded.value.request[key]
   })
 
   const days = [...activity.entries()].sort(([a], [b]) => a.localeCompare(b))
@@ -343,6 +376,15 @@ export const get = Effect.fn("SessionStats.get")(function* (input: Input = {}) {
     models: [...models.values()]
       .sort((a, b) => TokenUsage.total(b.tokens) - TokenUsage.total(a.tokens))
       .map((model) => ({ ...model, cost: Money.USD.make(model.cost) })),
+    breakdown:
+      breakdownRequests === 0
+        ? undefined
+        : {
+            requests: breakdownRequests,
+            average: Object.fromEntries(
+              Object.entries(breakdown).map(([key, value]) => [key, Math.round(value / breakdownRequests)]),
+            ) as TokenUsage.Breakdown,
+          },
   }
 })
 
@@ -364,6 +406,10 @@ function rowTokens(row: MessageRow): Tokens {
     reasoning: row.reasoning ?? 0,
     cache: { read: row.cacheRead ?? 0, write: row.cacheWrite ?? 0 },
   }
+}
+
+function emptyBreakdown(): Types.DeepMutable<TokenUsage.Breakdown> {
+  return { system: 0, tools: 0, user: 0, assistant: 0, reasoning: 0, toolCalls: 0, toolResults: 0, media: 0, summary: 0 }
 }
 
 function emptyTokens(): Tokens {
