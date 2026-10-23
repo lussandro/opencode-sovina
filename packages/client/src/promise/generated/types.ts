@@ -2299,6 +2299,9 @@ export type ConfigEntry =
         plugins?: Array<string | { package: string; options?: { [x: string]: JsonValue } }>
         worktree?: ConfigWorktree
         warming?: boolean | { prompt?: string; interval?: string; duration?: string }
+        caveman?: boolean | "lite" | "full"
+        prune?: boolean | { idle?: string; keep?: number; min?: number }
+        codemode?: "auto" | "on" | "off"
         providers?: {
           [x: string]: {
             canonical?: ProviderID

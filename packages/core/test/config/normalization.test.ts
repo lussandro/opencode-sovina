@@ -116,6 +116,23 @@ describe("ConfigNormalize", () => {
     expect(Duration.toMillis(info.warming.duration ?? Duration.zero)).toBe(1_800_000)
   })
 
+  test("keeps the caveman setting, including an explicit false", () => {
+    expect(normalized({ caveman: "lite" }).encoded.caveman).toBe("lite")
+    expect(normalized({ caveman: false }).encoded.caveman).toBe(false)
+    expect(normalized({}).encoded.caveman).toBeUndefined()
+  })
+
+  test("keeps the prune setting, including an explicit false", () => {
+    expect(normalized({ prune: false }).encoded.prune).toBe(false)
+    expect(normalized({ prune: { keep: 3 } }).encoded.prune).toEqual({ keep: 3 })
+    expect(normalized({}).encoded.prune).toBeUndefined()
+  })
+
+  test("keeps the codemode setting", () => {
+    expect(normalized({ codemode: "off" }).encoded.codemode).toBe("off")
+    expect(normalized({}).encoded.codemode).toBeUndefined()
+  })
+
   test("preserves arbitrary JSON-round-tripped native configuration", () => {
     const result = Effect.runSync(
       Arbitrary.checkEffect(

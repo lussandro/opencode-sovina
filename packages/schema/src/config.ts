@@ -21,6 +21,9 @@ import { ConfigWebSearch } from "./config/websearch.js"
 import { ConfigToolOutput } from "./config/tool-output.js"
 import { ConfigWatcher } from "./config/watcher.js"
 import { ConfigWarming } from "./config/warming.js"
+import { ConfigCaveman } from "./config/caveman.js"
+import { ConfigPrune } from "./config/prune.js"
+import { ConfigCodeMode } from "./config/codemode.js"
 import { ConfigWorktree } from "./config/worktree.js"
 
 export class Info extends Schema.Class<Info>("Config.Info")({
@@ -108,6 +111,18 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   warming: ConfigWarming.Warming.pipe(optional).annotate({
     description: "Keep recently active sessions warm with transient model requests (default: false)",
+  }),
+  caveman: ConfigCaveman.Caveman.pipe(optional).annotate({
+    description:
+      'Terse chat replies to save output tokens: "full" (default, same as true), "lite" (trim filler only) or false (off)',
+  }),
+  prune: ConfigPrune.Prune.pipe(optional).annotate({
+    description:
+      "Trim tool output the model re-reads from history: point repeated identical calls at the earlier one, and replace old re-fetchable output with a stub once the provider prompt cache has gone cold (default: true)",
+  }),
+  codemode: ConfigCodeMode.Mode.pipe(optional).annotate({
+    description:
+      'Whether to offer the Code Mode "execute" tool: "auto" (default) only when an MCP server or other external tool needs it, "on" always, "off" never',
   }),
   providers: Schema.Record(Schema.String, ConfigProvider.Info).pipe(optional),
   experimental: ConfigExperimental.Info.pipe(optional),
